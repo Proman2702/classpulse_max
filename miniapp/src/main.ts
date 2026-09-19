@@ -6,8 +6,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <p class="eyebrow">MAX Mini App</p>
     <h1 id="page-title">ClassPulse</h1>
     <p class="intro">
-      Тестовый запуск работает. Здесь появится быстрый обзор занятий,
-      активности класса и важных событий.
+      Тестовый запуск работает
     </p>
 
     <div class="status" role="status" aria-live="polite">
