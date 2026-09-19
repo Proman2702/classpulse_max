@@ -1,6 +1,6 @@
 # ClassPulse MAX
 
-Монорепозиторий с MAX-ботом и минимальным MAX Mini App. Бот служит точкой входа: команда `/start` показывает кнопку, ведущую в мини-приложение.
+Монорепозиторий с MAX-ботом и минимальным MAX Mini App
 
 ## Структура
 
@@ -28,7 +28,9 @@ Copy-Item .env.example bot/.env
 Откройте `bot/.env` и замените значения:
 
 ```env
+MAX_API_URL=https://platform-api.max.ru
 BOT_TOKEN=ваш_токен_бота_MAX
+MINI_APP_ENABLED=true
 MAX_BOT_USERNAME=имя_бота_без_знака_собачки
 MINI_APP_URL=https://ваш-опубликованный-miniapp.example.com
 ```
@@ -67,15 +69,6 @@ npm run build
 ```powershell
 npm run start:bot
 ```
-
-## Подключение Mini App в MAX
-
-1. Опубликуйте содержимое `miniapp/dist` на публичном HTTPS-домене.
-2. Укажите этот URL в `bot/.env` как `MINI_APP_URL`, а публичное имя бота — как `MAX_BOT_USERNAME`.
-3. На платформе MAX для партнёров откройте настройки нужного чат-бота и вставьте тот же HTTPS URL в поле ссылки мини-приложения.
-4. Запустите бота и отправьте ему `/start`: inline-кнопка типа `open_app` откроет Mini App внутри MAX.
-
-Для локальной разработки Vite использует обычный `http://localhost`. MAX принимает Mini App только по публичному HTTPS URL, поэтому локальный адрес нельзя зарегистрировать напрямую.
 
 ## Полезные ссылки
 
