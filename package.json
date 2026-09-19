@@ -1,0 +1,25 @@
+{
+  "name": "classpulse_max",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MAX bot and Mini App for ClassPulse",
+  "workspaces": [
+    "bot",
+    "miniapp"
+  ],
+  "scripts": {
+    "dev": "concurrently -n bot,miniapp -c cyan,magenta \"npm run dev:bot\" \"npm run dev:miniapp\"",
+    "dev:bot": "npm run dev --workspace bot",
+    "dev:miniapp": "npm run dev --workspace miniapp",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "start:bot": "npm run start --workspace bot",
+    "preview:miniapp": "npm run preview --workspace miniapp"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
