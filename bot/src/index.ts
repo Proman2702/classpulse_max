@@ -40,8 +40,8 @@ bot.command('start', (ctx) =>
 );
 
 bot.command('ping', (ctx) => ctx.reply('переплетение яиZzzZzzZZZ'));
-bot.command('penis', (ctx) => ctx.reply('сдохни даун'));
-bot.on('message_created', (ctx) => ctx.reply('пшел нахй'));
+bot.command('penis', (ctx) => ctx.reply('z'));
+bot.on('message_created', (ctx) => ctx.reply('пиво'));
 
 bot.catch(() => {
   console.error('Не удалось обработать событие MAX.');
