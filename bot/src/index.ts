@@ -9,50 +9,53 @@ if (!token || token === 'your_max_bot_token') {
   throw new Error('BOT_TOKEN is not configured. Copy .env.example to bot/.env and add the MAX bot token.');
 }
 
-if (!miniAppUrl || miniAppUrl === 'https://your-mini-app.example.com') {
-  throw new Error('MINI_APP_URL is not configured. Add the public HTTPS Mini App URL to bot/.env.');
+// Enable the Mini App only when explicitly requested after publishing it.
+const miniAppEnabled = process.env.MINI_APP_ENABLED === 'true';
+if (miniAppEnabled && (!botUsername || !miniAppUrl || new URL(miniAppUrl).protocol !== 'https:')) {
+  throw new Error('Mini App requires MAX_BOT_USERNAME and an HTTPS MINI_APP_URL.');
 }
 
-if (!botUsername || botUsername === 'your_bot_username') {
-  throw new Error('MAX_BOT_USERNAME is not configured. Add the bot username to bot/.env.');
-}
+const bot = new Bot(token, {
+  clientOptions: { baseUrl: process.env.MAX_API_URL || 'https://platform-api2.max.ru' },
+});
 
-const parsedMiniAppUrl = new URL(miniAppUrl);
+const attachments = miniAppEnabled && botUsername
+  ? [Keyboard.inlineKeyboard([[Keyboard.button.openApp('Открыть ClassPulse', botUsername)]])]
+  : [];
 
-if (parsedMiniAppUrl.protocol !== 'https:') {
-  throw new Error('MINI_APP_URL must use HTTPS, as required by MAX.');
-}
-
-const bot = new Bot(token);
-
-const miniAppKeyboard = Keyboard.inlineKeyboard([
-  [Keyboard.button.openApp('Открыть ClassPulse', botUsername)],
-]);
-
-const welcomeText = 'ClassPulse готов к тестовому запуску. Откройте мини-приложение кнопкой ниже.';
+const welcomeText = miniAppEnabled
+  ? 'ClassPulse готов! Откройте мини-приложение кнопкой ниже.'
+  : 'свинья. Напиши /ping';
 
 bot.on('bot_started', (ctx) =>
   ctx.reply(welcomeText, {
-    attachments: [miniAppKeyboard],
+    attachments,
   }),
 );
 
 bot.command('start', (ctx) =>
   ctx.reply(welcomeText, {
-    attachments: [miniAppKeyboard],
+    attachments,
   }),
 );
 
-bot.catch((error) => {
-  console.error('MAX bot error:', error);
+bot.command('ping', (ctx) => ctx.reply('переплетение яиZzzZzzZZZ'));
+bot.command('penis', (ctx) => ctx.reply('сдохни даун'));
+bot.on('message_created', (ctx) => ctx.reply('пшел нахй'));
+
+bot.catch(() => {
+  console.error('Не удалось обработать событие MAX.');
 });
 
 await bot.api.setMyCommands([
   {
     name: 'start',
-    description: 'Открыть ClassPulse',
+    description: 'Запустить ClassPulse',
   },
+  { name: 'ping', description: 'Проверить работу бота' },
 ]);
 
-bot.start();
-console.log('ClassPulse MAX bot started via long polling.');
+const info = await bot.api.getMyInfo();
+console.log(`MAX authenticated: @${info.username}`);
+console.log('ClassPulse long polling starting (Mini App: ' + miniAppEnabled + ').');
+await bot.start();
