@@ -7,7 +7,8 @@
 ```text
 classpulse_max/
 ├── bot/       # TypeScript + официальный @maxhub/max-bot-api
-├── miniapp/   # Vite + TypeScript
+├── miniapp/   # React + TypeScript + Vite + Supabase
+├── supabase/  # SQL-схема MVP
 └── package.json
 ```
 
@@ -23,6 +24,7 @@ classpulse_max/
 ```powershell
 npm install
 Copy-Item .env.example bot/.env
+Copy-Item miniapp/.env.example miniapp/.env
 ```
 
 Откройте `bot/.env` и замените значения:
@@ -36,6 +38,18 @@ MINI_APP_URL=https://ваш-опубликованный-miniapp.example.com
 ```
 
 `bot/.env` игнорируется Git и не попадёт в коммит.
+
+В `miniapp/.env` укажите URL проекта Supabase и публичный publishable key:
+
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+```
+
+Перед первым запуском выполните [`supabase/schema.sql`](supabase/schema.sql) в Supabase SQL Editor.
+Скрипт создаёт профили пользователей, check-in, связи учитель–ученик, обращения,
+триггер регистрации и политики Row Level Security. Вход работает через Supabase Auth
+по email и паролю; сессия восстанавливается автоматически.
 
 ## Локальный запуск
 
