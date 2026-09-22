@@ -26,9 +26,33 @@ create table if not exists public.student_checkins (
   mood integer not null,
   reasons text[] not null default '{}',
   comment text,
+  checkin_date date not null default ((timezone('Europe/Moscow', now()))::date),
   created_at timestamptz not null default now(),
   constraint student_checkins_mood_check check (mood between 1 and 5)
 );
+
+alter table public.student_checkins
+  add column if not exists checkin_date date;
+
+with ranked_checkins as (
+  select
+    id,
+    (timezone('Europe/Moscow', created_at))::date as derived_date,
+    row_number() over (
+      partition by student_id, (timezone('Europe/Moscow', created_at))::date
+      order by created_at desc, id desc
+    ) as row_number
+  from public.student_checkins
+)
+update public.student_checkins as checkin
+set checkin_date = ranked.derived_date
+from ranked_checkins as ranked
+where checkin.id = ranked.id
+  and checkin.checkin_date is null
+  and ranked.row_number = 1;
+
+alter table public.student_checkins
+  alter column checkin_date set default ((timezone('Europe/Moscow', now()))::date);
 
 create table if not exists public.teacher_students (
   id uuid primary key default gen_random_uuid(),
@@ -55,6 +79,10 @@ create table if not exists public.student_requests (
 
 create index if not exists student_checkins_student_created_idx
   on public.student_checkins (student_id, created_at desc);
+
+create unique index if not exists student_checkins_student_date_key
+  on public.student_checkins (student_id, checkin_date)
+  where checkin_date is not null;
 
 create index if not exists teacher_students_student_id_idx
   on public.teacher_students (student_id);
@@ -136,6 +164,7 @@ revoke all on table public.student_requests from anon, authenticated;
 
 grant select on table public.users to authenticated;
 grant select, insert on table public.student_checkins to authenticated;
+grant update (mood, reasons, comment) on table public.student_checkins to authenticated;
 grant select, insert on table public.teacher_students to authenticated;
 grant select, insert on table public.student_requests to authenticated;
 grant update (status) on table public.student_requests to authenticated;
@@ -171,6 +200,21 @@ to authenticated
 with check (
   student_id = (select private.current_profile_id())
   and (select private.current_user_role()) = 'student'
+  and checkin_date is not null
+);
+
+drop policy if exists "Students can update their own daily checkin" on public.student_checkins;
+create policy "Students can update their own daily checkin"
+on public.student_checkins for update
+to authenticated
+using (
+  student_id = (select private.current_profile_id())
+  and (select private.current_user_role()) = 'student'
+)
+with check (
+  student_id = (select private.current_profile_id())
+  and (select private.current_user_role()) = 'student'
+  and checkin_date is not null
 );
 
 drop policy if exists "Users can read their teacher student links" on public.teacher_students;

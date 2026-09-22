@@ -16,6 +16,7 @@ export interface StudentCheckin {
   mood: number;
   reasons: string[];
   comment: string | null;
+  checkinDate: string;
   createdAt: string;
 }
 

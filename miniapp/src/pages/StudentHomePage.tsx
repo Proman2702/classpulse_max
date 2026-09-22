@@ -1,10 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { createCheckin } from "../api/checkins";
-import { createStudentRequest } from "../api/requests";
-import { getTeachers } from "../api/users";
+import { getTodayCheckin, saveCheckin } from "../api/checkins";
 import { AppHeader } from "../components/AppHeader";
 import { getErrorMessage } from "../lib/errors";
-import type { User } from "../types";
+import type { StudentCheckin, User } from "../types";
 
 interface StudentHomePageProps {
   user: User;
@@ -34,29 +32,29 @@ export const StudentHomePage = ({ user, onLogout }: StudentHomePageProps) => {
   const [mood, setMood] = useState<number | null>(null);
   const [reasons, setReasons] = useState<string[]>([]);
   const [comment, setComment] = useState("");
-  const [teachers, setTeachers] = useState<User[]>([]);
-  const [teacherId, setTeacherId] = useState("");
-  const [requestMessage, setRequestMessage] = useState("");
+  const [todayCheckin, setTodayCheckin] = useState<StudentCheckin | null>(null);
+  const [isLoadingCheckin, setIsLoadingCheckin] = useState(true);
+  const [isVoting, setIsVoting] = useState(true);
   const [isSendingCheckin, setIsSendingCheckin] = useState(false);
-  const [isSendingRequest, setIsSendingRequest] = useState(false);
   const [checkinNotice, setCheckinNotice] = useState("");
-  const [requestNotice, setRequestNotice] = useState("");
-  const [teacherError, setTeacherError] = useState("");
+  const [chatNotice, setChatNotice] = useState("");
 
   useEffect(() => {
-    const loadTeachers = async () => {
+    const loadTodayCheckin = async () => {
       try {
-        const loadedTeachers = await getTeachers();
-        setTeachers(loadedTeachers);
-        setTeacherId(loadedTeachers[0]?.id ?? "");
+        const checkin = await getTodayCheckin(user.id);
+        setTodayCheckin(checkin);
+        setIsVoting(!checkin);
       } catch (error: unknown) {
-        console.error("Failed to load teachers:", error);
-        setTeacherError(getErrorMessage(error, "Не удалось загрузить список учителей"));
+        console.error("Failed to load today's check-in:", error);
+        setCheckinNotice(getErrorMessage(error, "Не удалось проверить сегодняшний ответ"));
+      } finally {
+        setIsLoadingCheckin(false);
       }
     };
 
-    void loadTeachers();
-  }, []);
+    void loadTodayCheckin();
+  }, [user.id]);
 
   const toggleReason = (reason: string) => {
     setReasons((currentReasons) =>
@@ -77,44 +75,27 @@ export const StudentHomePage = ({ user, onLogout }: StudentHomePageProps) => {
 
     setIsSendingCheckin(true);
     try {
-      await createCheckin(user.id, mood, reasons, comment);
-      setMood(null);
-      setReasons([]);
-      setComment("");
-      setCheckinNotice("Спасибо! Состояние сохранено.");
+      const savedCheckin = await saveCheckin(user.id, mood, reasons, comment);
+      setTodayCheckin(savedCheckin);
+      setIsVoting(false);
+      setCheckinNotice("");
     } catch (error: unknown) {
-      console.error("Failed to create check-in:", error);
+      console.error("Failed to save check-in:", error);
       setCheckinNotice(getErrorMessage(error, "Не удалось отправить состояние"));
     } finally {
       setIsSendingCheckin(false);
     }
   };
 
-  const handleRequest = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setRequestNotice("");
-
-    if (!teacherId) {
-      setRequestNotice("Выберите учителя");
+  const handleRevote = () => {
+    if (!todayCheckin) {
       return;
     }
 
-    if (!requestMessage.trim()) {
-      setRequestNotice("Напишите, что случилось");
-      return;
-    }
-
-    setIsSendingRequest(true);
-    try {
-      await createStudentRequest(user.id, teacherId, requestMessage);
-      setRequestMessage("");
-      setRequestNotice("Сообщение отправлено учителю.");
-    } catch (error: unknown) {
-      console.error("Failed to send student request:", error);
-      setRequestNotice(getErrorMessage(error, "Не удалось отправить сообщение"));
-    } finally {
-      setIsSendingRequest(false);
-    }
+    setMood(todayCheckin.mood);
+    setReasons(todayCheckin.reasons);
+    setComment(todayCheckin.comment ?? "");
+    setIsVoting(true);
   };
 
   return (
@@ -127,96 +108,98 @@ export const StudentHomePage = ({ user, onLogout }: StudentHomePageProps) => {
           <p>Здесь можно честно отметить своё состояние. Это займёт меньше минуты.</p>
         </section>
 
-        <form className="panel" onSubmit={handleCheckin}>
-          <div className="section-heading">
-            <span className="step-number">1</span>
-            <div><h2>Выбери состояние</h2><p>От 1 — очень тяжело до 5 — отлично</p></div>
-          </div>
-          <div className="mood-picker">
-            {moods.map((item) => (
-              <button
-                className={mood === item.value ? "mood-button mood-button--active" : "mood-button"}
-                type="button"
-                key={item.value}
-                onClick={() => setMood(item.value)}
-                aria-label={`${item.value}: ${item.label}`}
-                aria-pressed={mood === item.value}
-              >
-                <span>{item.emoji}</span>
-                <small>{item.value}</small>
-              </button>
-            ))}
-          </div>
+        {isLoadingCheckin ? (
+          <p className="loading-state">Проверяем сегодняшний ответ…</p>
+        ) : todayCheckin && !isVoting ? (
+          <section className="panel vote-success" aria-live="polite">
+            <span className="vote-success__icon" aria-hidden="true">✓</span>
+            <p className="eyebrow">Ответ за сегодня сохранён</p>
+            <h2>Успешно проголосовал</h2>
+            <p>Сегодня повторно проходить опрос не нужно. Учитель уже увидит твоё состояние.</p>
+            <div className="vote-success__result">
+              <span>Твоя оценка</span>
+              <strong>{todayCheckin.mood}/5</strong>
+            </div>
+            <button className="button button--ghost button--fit" type="button" onClick={handleRevote}>
+              Переголосовать · отладка
+            </button>
+          </section>
+        ) : (
+          <form className="panel" onSubmit={handleCheckin}>
+            <div className="section-heading">
+              <span className="step-number">1</span>
+              <div><h2>Выбери состояние</h2><p>От 1 — очень тяжело до 5 — отлично</p></div>
+            </div>
+            <div className="mood-picker">
+              {moods.map((item) => (
+                <button
+                  className={mood === item.value ? "mood-button mood-button--active" : "mood-button"}
+                  type="button"
+                  key={item.value}
+                  onClick={() => setMood(item.value)}
+                  aria-label={`${item.value}: ${item.label}`}
+                  aria-pressed={mood === item.value}
+                >
+                  <span>{item.emoji}</span>
+                  <small>{item.value}</small>
+                </button>
+              ))}
+            </div>
 
-          <div className="section-heading section-heading--spaced">
-            <span className="step-number">2</span>
-            <div><h2>Что повлияло?</h2><p>Можно выбрать несколько вариантов</p></div>
-          </div>
-          <div className="chip-list">
-            {availableReasons.map((reason) => (
-              <button
-                type="button"
-                className={reasons.includes(reason) ? "chip chip--active" : "chip"}
-                key={reason}
-                onClick={() => toggleReason(reason)}
-                aria-pressed={reasons.includes(reason)}
-              >
-                {reason}
-              </button>
-            ))}
-          </div>
+            <div className="section-heading section-heading--spaced">
+              <span className="step-number">2</span>
+              <div><h2>Что повлияло?</h2><p>Можно выбрать несколько вариантов</p></div>
+            </div>
+            <div className="chip-list">
+              {availableReasons.map((reason) => (
+                <button
+                  type="button"
+                  className={reasons.includes(reason) ? "chip chip--active" : "chip"}
+                  key={reason}
+                  onClick={() => toggleReason(reason)}
+                  aria-pressed={reasons.includes(reason)}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
 
-          <label className="field field--spaced">
-            <span>Хочешь что-нибудь добавить?</span>
-            <textarea
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-              placeholder="Можно оставить поле пустым"
-              rows={4}
-              maxLength={1000}
-            />
-          </label>
-          {checkinNotice && <p className="message" role="status">{checkinNotice}</p>}
-          <button className="button button--primary" disabled={isSendingCheckin}>
-            {isSendingCheckin ? "Отправляем…" : "Отправить состояние"}
-          </button>
-        </form>
+            <div className="section-heading section-heading--spaced">
+              <span className="step-number">3</span>
+              <div><h2>Комментарий</h2><p>Расскажи подробнее или оставь поле пустым</p></div>
+            </div>
+            <label className="field survey-comment">
+              <span className="sr-only">Комментарий</span>
+              <textarea
+                value={comment}
+                onChange={(event) => setComment(event.target.value)}
+                placeholder="Что ещё важно знать учителю?"
+                rows={4}
+                maxLength={1000}
+              />
+            </label>
+            {checkinNotice && <p className="message" role="status">{checkinNotice}</p>}
+            <button className="button button--primary" disabled={isSendingCheckin}>
+              {isSendingCheckin ? "Сохраняем…" : todayCheckin ? "Обновить состояние" : "Отправить состояние"}
+            </button>
+          </form>
+        )}
 
-        <form className="panel panel--accent" onSubmit={handleRequest}>
+        <section className="panel panel--accent max-chat-card">
           <div className="section-heading">
             <span className="section-icon" aria-hidden="true">💬</span>
-            <div><h2>Связаться с учителем</h2><p>Если хочется поговорить или нужна помощь</p></div>
+            <div><h2>Чат с учителем в MAX</h2><p>Для личного разговора и срочных вопросов</p></div>
           </div>
-          <label className="field field--spaced">
-            <span>Кому написать?</span>
-            <select value={teacherId} onChange={(event) => setTeacherId(event.target.value)}>
-              {teachers.length === 0 && <option value="">Учителя пока не зарегистрированы</option>}
-              {teachers.map((teacher) => (
-                <option key={teacher.id} value={teacher.id}>{teacher.nickname}</option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>Что случилось?</span>
-            <textarea
-              value={requestMessage}
-              onChange={(event) => setRequestMessage(event.target.value)}
-              placeholder="Опиши ситуацию своими словами"
-              rows={5}
-              maxLength={2000}
-            />
-          </label>
-          {(teacherError || requestNotice) && (
-            <p className="message" role="status">{teacherError || requestNotice}</p>
-          )}
           <button
-            className="button button--dark"
-            disabled={isSendingRequest || teachers.length === 0}
+            className="button button--dark max-chat-card__button"
+            type="button"
+            onClick={() => setChatNotice("Переход в чат MAX появится после подключения бота.")}
           >
-            {isSendingRequest ? "Отправляем…" : "Отправить учителю"}
+            Открыть чат с учителем
           </button>
-          <p className="privacy-note">Сообщение увидит выбранный учитель.</p>
-        </form>
+          {chatNotice && <p className="message" role="status">{chatNotice}</p>}
+          <p className="privacy-note">Пока это заготовка для будущей интеграции с чатами MAX.</p>
+        </section>
       </main>
     </div>
   );

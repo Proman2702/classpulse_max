@@ -1,23 +1,32 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { getCheckinsForStudents } from "../api/checkins";
-import { getTeacherRequests } from "../api/requests";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { getCheckinsForStudents, getTodayDate } from "../api/checkins";
 import { addStudentToTeacher, getTeacherStudents } from "../api/teacherStudents";
 import { AppHeader } from "../components/AppHeader";
-import { StudentCard } from "../components/StudentCard";
+import { getStudentState, StudentCard, type StudentStateKey } from "../components/StudentCard";
 import { getErrorMessage } from "../lib/errors";
-import type { StudentCheckin, TeacherRequest, User } from "../types";
+import type { StudentCheckin, User } from "../types";
 
 interface TeacherDashboardProps {
   user: User;
   onLogout: () => void;
 }
 
+const statePriority: Record<StudentStateKey, number> = {
+  attention: 0,
+  unstable: 1,
+  stable: 2,
+  positive: 3,
+  "no-data": 4,
+};
+
 export const TeacherDashboard = ({ user, onLogout }: TeacherDashboardProps) => {
   const [students, setStudents] = useState<User[]>([]);
   const [checkins, setCheckins] = useState<StudentCheckin[]>([]);
-  const [requests, setRequests] = useState<TeacherRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [stateFilter, setStateFilter] = useState<StudentStateKey | "all">("all");
+  const [sortBy, setSortBy] = useState<"state" | "name">("state");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [studentNickname, setStudentNickname] = useState("");
   const [addError, setAddError] = useState("");
@@ -27,15 +36,11 @@ export const TeacherDashboard = ({ user, onLogout }: TeacherDashboardProps) => {
     setError("");
 
     try {
-      const [loadedStudents, loadedRequests] = await Promise.all([
-        getTeacherStudents(user.id),
-        getTeacherRequests(user.id),
-      ]);
+      const loadedStudents = await getTeacherStudents(user.id);
       const loadedCheckins = await getCheckinsForStudents(
         loadedStudents.map((student) => student.id),
       );
       setStudents(loadedStudents);
-      setRequests(loadedRequests);
       setCheckins(loadedCheckins);
     } catch (loadError: unknown) {
       console.error("Failed to load teacher dashboard:", loadError);
@@ -48,6 +53,48 @@ export const TeacherDashboard = ({ user, onLogout }: TeacherDashboardProps) => {
   useEffect(() => {
     void loadDashboard();
   }, [user.id]);
+
+  const checkinsByStudent = useMemo(() => {
+    const grouped = new Map<string, StudentCheckin[]>();
+
+    for (const checkin of checkins) {
+      const studentCheckins = grouped.get(checkin.studentId) ?? [];
+      studentCheckins.push(checkin);
+      grouped.set(checkin.studentId, studentCheckins);
+    }
+
+    return grouped;
+  }, [checkins]);
+
+  const todayCheckins = useMemo(() => {
+    const today = getTodayDate();
+    return checkins.filter((checkin) => checkin.checkinDate === today);
+  }, [checkins]);
+
+  const todayAverage = todayCheckins.length > 0
+    ? todayCheckins.reduce((sum, checkin) => sum + checkin.mood, 0) / todayCheckins.length
+    : null;
+
+  const visibleStudents = useMemo(() => {
+    const normalizedSearch = search.trim().toLocaleLowerCase("ru-RU");
+    const filtered = students.filter((student) => {
+      const state = getStudentState(checkinsByStudent.get(student.id) ?? []);
+      const matchesSearch = student.nickname.toLocaleLowerCase("ru-RU").includes(normalizedSearch);
+      const matchesState = stateFilter === "all" || state.key === stateFilter;
+      return matchesSearch && matchesState;
+    });
+
+    return filtered.sort((first, second) => {
+      if (sortBy === "name") {
+        return first.nickname.localeCompare(second.nickname, "ru");
+      }
+
+      const firstState = getStudentState(checkinsByStudent.get(first.id) ?? []);
+      const secondState = getStudentState(checkinsByStudent.get(second.id) ?? []);
+      return statePriority[firstState.key] - statePriority[secondState.key]
+        || first.nickname.localeCompare(second.nickname, "ru");
+    });
+  }, [checkinsByStudent, search, sortBy, stateFilter, students]);
 
   const handleAddStudent = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -81,62 +128,83 @@ export const TeacherDashboard = ({ user, onLogout }: TeacherDashboardProps) => {
           <div>
             <p className="eyebrow">Панель учителя</p>
             <h1>Здравствуйте, {user.nickname}</h1>
-            <p>Следите за состоянием учеников и отвечайте на важные обращения.</p>
+            <p>Общая картина класса и состояние каждого ученика.</p>
           </div>
-          <div className="summary-card">
-            <strong>{students.length}</strong>
-            <span>учеников</span>
-          </div>
+          <button className="button button--primary button--fit" type="button" onClick={() => setIsDialogOpen(true)}>
+            <span aria-hidden="true">＋</span> Добавить ученика
+          </button>
         </section>
 
         {error && <p className="message message--error" role="alert">{error}</p>}
 
-        <section className="dashboard-section" aria-labelledby="students-title">
+        <section className="dashboard-section class-summary" aria-labelledby="class-summary-title">
           <div className="dashboard-section__header">
-            <div><p className="eyebrow">Моя группа</p><h2 id="students-title">Ученики</h2></div>
-            <button className="button button--primary button--fit" type="button" onClick={() => setIsDialogOpen(true)}>
-              <span aria-hidden="true">＋</span> Добавить ученика
-            </button>
+            <div><p className="eyebrow">Сегодня</p><h2 id="class-summary-title">Состояние класса</h2></div>
+          </div>
+          <div className="class-summary__metrics">
+            <article className="metric-card">
+              <span>Проголосовали</span>
+              <strong>{todayCheckins.length}<small> / {students.length}</small></strong>
+              <p>учеников за сегодня</p>
+            </article>
+            <article className="metric-card">
+              <span>Средняя оценка</span>
+              <strong>{todayAverage?.toFixed(1) ?? "—"}<small>{todayAverage === null ? "" : " / 5"}</small></strong>
+              <p>по сегодняшним ответам</p>
+            </article>
+            <article className="metric-card metric-card--wide">
+              <span>Общая сводка класса</span>
+              <strong className="metric-card__placeholder">AI-сводка появится здесь</strong>
+              <p>Задел для внешней нейросети: общие темы, жалобы и изменения без раскрытия лишних деталей.</p>
+            </article>
+          </div>
+        </section>
+
+        <section className="dashboard-section" aria-labelledby="student-state-title">
+          <div className="dashboard-section__header student-list-heading">
+            <div><p className="eyebrow">Ученики класса</p><h2 id="student-state-title">Состояние учеников</h2></div>
+            <span className="counter-badge">{visibleStudents.length}</span>
+          </div>
+
+          <div className="student-filters" role="search">
+            <label className="filter-field filter-field--search">
+              <span>Поиск по имени</span>
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Введите имя ученика" />
+            </label>
+            <label className="filter-field">
+              <span>Общее состояние</span>
+              <select value={stateFilter} onChange={(event) => setStateFilter(event.target.value as StudentStateKey | "all")}>
+                <option value="all">Все состояния</option>
+                <option value="attention">Требует внимания</option>
+                <option value="unstable">Нестабильное</option>
+                <option value="stable">Стабильное</option>
+                <option value="positive">Хорошее</option>
+                <option value="no-data">Нет данных</option>
+              </select>
+            </label>
+            <label className="filter-field">
+              <span>Сортировка</span>
+              <select value={sortBy} onChange={(event) => setSortBy(event.target.value as "state" | "name")}>
+                <option value="state">По состоянию</option>
+                <option value="name">По имени</option>
+              </select>
+            </label>
           </div>
 
           {isLoading ? (
             <p className="loading-state">Загружаем данные…</p>
           ) : students.length === 0 ? (
             <div className="empty-state"><span aria-hidden="true">👥</span><h3>Учеников пока нет</h3><p>Добавьте ученика по нику, чтобы видеть его состояние.</p></div>
+          ) : visibleStudents.length === 0 ? (
+            <div className="empty-state empty-state--compact"><h3>Ничего не найдено</h3><p>Измените поиск или фильтр состояния.</p></div>
           ) : (
-            <div className="student-grid">
-              {students.map((student) => (
+            <div className="student-grid student-grid--detailed">
+              {visibleStudents.map((student) => (
                 <StudentCard
                   key={student.id}
                   student={student}
-                  checkins={checkins.filter((checkin) => checkin.studentId === student.id)}
+                  checkins={checkinsByStudent.get(student.id) ?? []}
                 />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="dashboard-section" aria-labelledby="requests-title">
-          <div className="dashboard-section__header">
-            <div><p className="eyebrow">Входящие</p><h2 id="requests-title">Обращения</h2></div>
-            {requests.length > 0 && <span className="counter-badge">{requests.length}</span>}
-          </div>
-
-          {!isLoading && requests.length === 0 ? (
-            <div className="empty-state empty-state--compact"><span aria-hidden="true">✓</span><h3>Новых обращений нет</h3></div>
-          ) : (
-            <div className="request-list">
-              {requests.map((request) => (
-                <article className={`request-card request-card--${request.severity}`} key={request.id}>
-                  <div className="request-card__meta">
-                    <strong>{request.studentNickname}</strong>
-                    <div><span className={`severity severity--${request.severity}`}>{request.severity}</span><span className="status-badge">{request.status}</span></div>
-                  </div>
-                  <p>{request.message}</p>
-                  <time dateTime={request.createdAt}>
-                    {new Date(request.createdAt).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" })}
-                  </time>
-                </article>
               ))}
             </div>
           )}
