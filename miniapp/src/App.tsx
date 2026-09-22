@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getAuthenticatedUser, signOut } from "./api/auth";
 import { getUserByAuthId } from "./api/users";
 import { getSupabase } from "./lib/supabase";
@@ -10,6 +10,7 @@ import type { User } from "./types";
 export const App = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const isSigningOut = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -17,7 +18,7 @@ export const App = () => {
     const loadSession = async () => {
       try {
         const user = await getAuthenticatedUser();
-        if (isMounted) {
+        if (isMounted && !isSigningOut.current) {
           setCurrentUser(user);
         }
       } catch (error: unknown) {
@@ -38,11 +39,15 @@ export const App = () => {
         return;
       }
 
+      if (isSigningOut.current) {
+        return;
+      }
+
       // Run the profile request after the auth callback has completed.
       window.setTimeout(() => {
         void getUserByAuthId(session.user.id)
           .then((user) => {
-            if (isMounted) {
+            if (isMounted && !isSigningOut.current) {
               setCurrentUser(user);
               setIsLoadingSession(false);
             }
@@ -64,10 +69,14 @@ export const App = () => {
   }, []);
 
   const handleLogin = (user: User) => {
+    isSigningOut.current = false;
     setCurrentUser(user);
   };
 
   const handleLogout = () => {
+    isSigningOut.current = true;
+    setCurrentUser(null);
+
     void signOut().catch((error: unknown) => {
       console.error("Failed to sign out:", error);
     });

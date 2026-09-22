@@ -69,7 +69,7 @@ export const getAuthenticatedUser = async (): Promise<User | null> => {
 };
 
 export const signOut = async () => {
-  const { error } = await getSupabase().auth.signOut();
+  const { error } = await getSupabase().auth.signOut({ scope: "local" });
 
   if (error) {
     throw error;
