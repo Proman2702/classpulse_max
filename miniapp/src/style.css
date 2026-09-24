@@ -413,7 +413,7 @@ h1, h2, h3, p { margin-top: 0; }
 
 .class-summary__metrics {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(260px, 1.4fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -433,16 +433,21 @@ h1, h2, h3, p { margin-top: 0; }
 .metric-card > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 
 .metric-card--wide {
+  grid-column: 1 / -1;
+  min-height: 0;
   border-color: #dcd8fa;
   background: linear-gradient(145deg, #f8f7ff, #eeecff);
 }
 
-.metric-card .metric-card__placeholder {
-  margin-top: 17px;
-  color: var(--primary-dark);
-  font-size: 18px;
-  line-height: 1.25;
-}
+.class-summary__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.class-summary__heading > span { color: var(--muted); font-size: 12px; font-weight: 750; }
+.class-summary__button { min-height: 36px; padding: 7px 12px; font-size: 12px; }
+.metric-card .class-summary__hint { margin-top: 12px; }
+.class-summary__text { margin-top: 12px; color: var(--ink); font-size: 13px; line-height: 1.45; }
+.class-summary__text h3 { margin: 12px 0 3px; font-size: 13px; }
+.class-summary__text h3:first-child { margin-top: 0; }
+.class-summary__text p { margin: 2px 0; white-space: pre-wrap; }
+.metric-card .class-summary__error { margin-top: 10px; color: #a51f30; }
 
 .student-filters {
   display: grid;
@@ -747,6 +752,7 @@ h1, h2, h3, p { margin-top: 0; }
   .summary-card { min-width: 0; }
   .student-grid { grid-template-columns: 1fr; }
   .class-summary__metrics, .student-filters { grid-template-columns: 1fr; }
+  .metric-card--wide { grid-column: auto; }
   .metric-card { min-height: 0; }
   .student-card__summary { grid-template-columns: 1fr 1fr; }
   .student-comment { grid-column: 1 / -1; }
@@ -763,5 +769,6 @@ h1, h2, h3, p { margin-top: 0; }
   .student-card__heading { align-items: flex-start; }
   .request-card__meta { align-items: flex-start; flex-direction: column; }
   .student-state { max-width: none; padding: 5px 7px; font-size: 9px; text-align: left; white-space: nowrap; }
+  .class-summary__heading { align-items: flex-start; flex-direction: column; }
   .modal { padding: 25px 20px; }
 }

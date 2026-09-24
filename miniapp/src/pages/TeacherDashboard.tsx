@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { getCheckinsForStudents, getTodayDate } from "../api/checkins";
+import { getClassSummary } from "../api/classSummary";
 import { addStudentToTeacher, getTeacherStudents } from "../api/teacherStudents";
 import { AppHeader } from "../components/AppHeader";
 import { getStudentState, StudentCard, type StudentStateKey } from "../components/StudentCard";
@@ -31,9 +32,14 @@ export const TeacherDashboard = ({ user, onLogout }: TeacherDashboardProps) => {
   const [studentNickname, setStudentNickname] = useState("");
   const [addError, setAddError] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState("");
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
 
   const loadDashboard = async () => {
     setError("");
+    setSummary(null);
+    setSummaryError("");
 
     try {
       const loadedStudents = await getTeacherStudents(user.id);
@@ -74,6 +80,21 @@ export const TeacherDashboard = ({ user, onLogout }: TeacherDashboardProps) => {
   const todayAverage = todayCheckins.length > 0
     ? todayCheckins.reduce((sum, checkin) => sum + checkin.mood, 0) / todayCheckins.length
     : null;
+
+  const handleGenerateSummary = async () => {
+    setSummaryError("");
+    setIsSummaryLoading(true);
+
+    try {
+      const result = await getClassSummary();
+      setSummary(result.summary);
+    } catch (summaryLoadError: unknown) {
+      console.error("Failed to generate class summary:", summaryLoadError);
+      setSummaryError(getErrorMessage(summaryLoadError, "Не удалось составить сводку"));
+    } finally {
+      setIsSummaryLoading(false);
+    }
+  };
 
   const visibleStudents = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase("ru-RU");
@@ -153,9 +174,34 @@ export const TeacherDashboard = ({ user, onLogout }: TeacherDashboardProps) => {
               <p>по сегодняшним ответам</p>
             </article>
             <article className="metric-card metric-card--wide">
-              <span>Общая сводка класса</span>
-              <strong className="metric-card__placeholder">AI-сводка появится здесь</strong>
-              <p>Задел для внешней нейросети: общие темы, жалобы и изменения без раскрытия лишних деталей.</p>
+              <div className="class-summary__heading">
+                <span>Общая сводка класса</span>
+                <button
+                  className="button button--secondary class-summary__button"
+                  type="button"
+                  disabled={isLoading || isSummaryLoading || todayCheckins.length === 0}
+                  onClick={() => void handleGenerateSummary()}
+                >
+                  {isSummaryLoading ? "Составляем…" : summary ? "Обновить сводку" : "Составить сводку"}
+                </button>
+              </div>
+              {summary ? (
+                <div className="class-summary__text" aria-live="polite">
+                  {summary.split("\n").map((line, index) => {
+                    const text = line.trim();
+                    if (!text) return null;
+                    if (text.startsWith("### ")) return <h3 key={index}>{text.slice(4)}</h3>;
+                    return <p key={index}>{text}</p>;
+                  })}
+                </div>
+              ) : (
+                <p className="class-summary__hint">
+                  {todayCheckins.length === 0
+                    ? "Пока нет ответов за сегодня"
+                    : "GigaChat выделит настроение, темы и трудности из сегодняшних ответов учеников."}
+                </p>
+              )}
+              {summaryError && <p className="class-summary__error" role="alert">{summaryError}</p>}
             </article>
           </div>
         </section>

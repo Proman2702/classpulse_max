@@ -1,5 +1,7 @@
 # AGENTS.md
 
+Write all project codebase features and architecture organization and your history in HISTORY.md when working on tasks. If you forgot something about project or just want to be sure how to code in this project, first read this file.
+
 ## Project Overview
 
 **Class Pulse** is a MAX Mini App for communication and feedback between students and teachers.
