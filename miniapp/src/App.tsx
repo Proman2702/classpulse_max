@@ -1,98 +1,60 @@
-import { useEffect, useRef, useState } from "react";
-import { getAuthenticatedUser, signOut } from "./api/auth";
-import { getUserByAuthId } from "./api/users";
-import { getSupabase } from "./lib/supabase";
-import { LoginPage } from "./pages/LoginPage";
-import { StudentHomePage } from "./pages/StudentHomePage";
-import { TeacherDashboard } from "./pages/TeacherDashboard";
+import { useEffect, useState } from "react";
+import { getCurrentUser, onSignedOut, signOut } from "./api/auth";
+import { LoginScreen } from "./features/auth/LoginScreen";
+import { PsychologistApp, StudentApp, TeacherApp } from "./features/RoleApps";
+import { getErrorMessage } from "./lib/errors";
 import type { User } from "./types";
+import { Banner, ScreenSpinner } from "./ui";
+
+const APPS = {
+  student: StudentApp,
+  teacher: TeacherApp,
+  psychologist: PsychologistApp,
+};
 
 export const App = () => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoadingSession, setIsLoadingSession] = useState(true);
-  const isSigningOut = useRef(false);
+  // undefined — сессия ещё проверяется, null — пользователь не вошёл.
+  const [user, setUser] = useState<User | null | undefined>(undefined);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    let isMounted = true;
+    getCurrentUser()
+      .then(setUser)
+      .catch((sessionError) => {
+        console.error("Failed to restore session:", sessionError);
+        setError(getErrorMessage(sessionError));
+        setUser(null);
+      });
 
-    const loadSession = async () => {
-      try {
-        const user = await getAuthenticatedUser();
-        if (isMounted && !isSigningOut.current) {
-          setCurrentUser(user);
-        }
-      } catch (error: unknown) {
-        console.error("Failed to restore Supabase session:", error);
-      } finally {
-        if (isMounted) {
-          setIsLoadingSession(false);
-        }
-      }
-    };
-
-    void loadSession();
-
-    const { data: authListener } = getSupabase().auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        setCurrentUser(null);
-        setIsLoadingSession(false);
-        return;
-      }
-
-      if (isSigningOut.current) {
-        return;
-      }
-
-      // Run the profile request after the auth callback has completed.
-      window.setTimeout(() => {
-        void getUserByAuthId(session.user.id)
-          .then((user) => {
-            if (isMounted && !isSigningOut.current) {
-              setCurrentUser(user);
-              setIsLoadingSession(false);
-            }
-          })
-          .catch((error: unknown) => {
-            console.error("Failed to load user profile:", error);
-            if (isMounted) {
-              setCurrentUser(null);
-              setIsLoadingSession(false);
-            }
-          });
-      }, 0);
-    });
-
-    return () => {
-      isMounted = false;
-      authListener.subscription.unsubscribe();
-    };
+    try {
+      return onSignedOut(() => setUser(null));
+    } catch {
+      return undefined;
+    }
   }, []);
 
-  const handleLogin = (user: User) => {
-    isSigningOut.current = false;
-    setCurrentUser(user);
+  const logout = async () => {
+    setError("");
+    try {
+      await signOut();
+      setUser(null);
+    } catch (signOutError) {
+      console.error("Failed to sign out:", signOutError);
+      setError(getErrorMessage(signOutError, "Не удалось выйти. Попробуйте ещё раз"));
+    }
   };
 
-  const handleLogout = () => {
-    isSigningOut.current = true;
-    setCurrentUser(null);
+  if (user === undefined) return <ScreenSpinner />;
 
-    void signOut().catch((error: unknown) => {
-      console.error("Failed to sign out:", error);
-    });
-  };
-
-  if (isLoadingSession) {
-    return <main className="session-loading">Проверяем вход…</main>;
+  if (!user) {
+    return (
+      <>
+        {error && <Banner tone="error">{error}</Banner>}
+        <LoginScreen onLogin={setUser} />
+      </>
+    );
   }
 
-  if (!currentUser) {
-    return <LoginPage onLogin={handleLogin} />;
-  }
-
-  if (currentUser.role === "student") {
-    return <StudentHomePage user={currentUser} onLogout={handleLogout} />;
-  }
-
-  return <TeacherDashboard user={currentUser} onLogout={handleLogout} />;
+  const RoleApp = APPS[user.role];
+  return <>{error && <Banner tone="error">{error}</Banner>}<RoleApp key={user.id} user={user} onUserChange={setUser} onLogout={logout} /></>;
 };

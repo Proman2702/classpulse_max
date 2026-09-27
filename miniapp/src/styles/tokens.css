@@ -1,0 +1,80 @@
+/* Цвета и размеры в духе MAX: светлый серый фон, белые карточки,
+   фирменный синий и фиолетовый из айдентики, мягкие скругления. */
+
+:root {
+  color-scheme: light;
+
+  --accent: #0077ff;
+  --accent-pressed: #0062d6;
+  --accent-soft: rgba(0, 119, 255, 0.1);
+  --violet: #6a1bff;
+  --pink: #ff3b7f;
+  --cyan: #2cc9e6;
+  --brand-gradient: linear-gradient(135deg, #00a3ff 0%, #0077ff 45%, #6a1bff 100%);
+
+  --bg: #eef0f4;
+  --surface: #ffffff;
+  --surface-muted: #f4f5f8;
+  --chat-bg: #e6ebf3;
+  --bubble-in: #ffffff;
+  --bubble-out: #0077ff;
+  --bubble-out-text: #ffffff;
+  --text: #16181d;
+  --text-secondary: #7a818c;
+  --text-tertiary: #a4aab3;
+  --separator: rgba(20, 24, 31, 0.08);
+  --overlay: rgba(10, 12, 18, 0.45);
+
+  --danger: #ff3347;
+  --success: #1fb46a;
+
+  --state-attention: #ff3b5c;
+  --state-attention-soft: rgba(255, 59, 92, 0.12);
+  --state-unstable: #f58b1f;
+  --state-unstable-soft: rgba(245, 139, 31, 0.14);
+  --state-stable: #0077ff;
+  --state-stable-soft: rgba(0, 119, 255, 0.1);
+  --state-positive: #16a862;
+  --state-positive-soft: rgba(22, 168, 98, 0.12);
+
+  --radius-s: 10px;
+  --radius-m: 14px;
+  --radius-l: 20px;
+  --radius-xl: 28px;
+  --shadow-card: 0 1px 2px rgba(20, 24, 31, 0.04);
+  --shadow-float: 0 12px 40px rgba(20, 24, 31, 0.16);
+
+  --gutter: 16px;
+  --tabbar-height: 60px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --accent: #3d95ff;
+    --accent-pressed: #2c82ec;
+    --accent-soft: rgba(61, 149, 255, 0.16);
+
+    --bg: #0d0e11;
+    --surface: #1b1c21;
+    --surface-muted: #24262c;
+    --chat-bg: #111318;
+    --bubble-in: #24262c;
+    --bubble-out: #2f7df0;
+    --text: #eceef2;
+    --text-secondary: #8d939d;
+    --text-tertiary: #5d636c;
+    --separator: rgba(255, 255, 255, 0.08);
+    --overlay: rgba(0, 0, 0, 0.6);
+
+    --state-attention-soft: rgba(255, 59, 92, 0.18);
+    --state-unstable-soft: rgba(245, 139, 31, 0.2);
+    --state-stable-soft: rgba(61, 149, 255, 0.18);
+    --state-positive-soft: rgba(22, 168, 98, 0.2);
+
+    --shadow-card: none;
+    --shadow-float: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+}

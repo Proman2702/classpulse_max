@@ -1,25 +1,53 @@
 # ClassPulse MAX
 
-Монорепозиторий с MAX-ботом и минимальным MAX Mini App
+Мини-приложение и бот для мессенджера MAX. Ученики каждый день отмечают, как прошёл день,
+могут записаться к психологу или учителю и анонимно пожаловаться. Учитель видит состояние
+класса, замечает, кому нужна поддержка, и получает короткую сводку дня от GigaChat.
+
+## Возможности
+
+**Ученик**
+- Опрос дня в формате чата: оценка 1–5, причины из списка, комментарий. Ответ можно изменить в течение дня.
+- Запись к психологу или учителю с темой и удобным временем, статус записи.
+- Анонимная жалоба на учителя, ученика или ситуацию. Срочность оценивает GigaChat.
+- Чат с учителем в MAX: кнопка открывает профиль учителя в мессенджере.
+
+**Учитель**
+- Сколько учеников ответили сегодня и средняя оценка.
+- Сводка класса от GigaChat по сегодняшним ответам. Имена в модель не передаются.
+- Список учеников с общим состоянием, последней и средней оценкой, историей из пяти оценок.
+  Поиск, фильтр по состоянию, сортировка.
+- Отметка «на контроле» для особенных учеников.
+- Личные заметки о поведении ученика: видны только автору.
+- Переход в профиль ученика в MAX.
+- Обращения: записи на разговор (принять, отклонить, отметить состоявшейся) и анонимные жалобы, срочные — наверху.
+
+**Психолог** — те же обращения, адресованные ему.
 
 ## Структура
 
 ```text
 classpulse_max/
-├── bot/       # TypeScript + официальный @maxhub/max-bot-api
-├── miniapp/   # React + TypeScript + Vite + Supabase
-├── supabase/  # SQL-схема MVP
-└── package.json
+├── bot/                       # MAX-бот: приветствие и кнопка мини-приложения
+├── miniapp/                   # React + TypeScript + Vite
+│   └── src/
+│       ├── api/               # запросы к Supabase и Edge Functions
+│       ├── features/          # экраны по ролям: auth, student, teacher, inbox, shared
+│       ├── hooks/             # useLoader — загрузка данных с ошибками
+│       ├── lib/               # MAX Bridge, даты, оценки и состояния, подписи
+│       ├── styles/            # токены (светлая и тёмная тема), базовые стили, компоненты, экраны
+│       └── ui/                # UI-кит в стиле MAX: ячейки, кнопки, шторка, таббар…
+└── supabase/
+    ├── schema.sql             # таблицы, RLS и привилегии (идемпотентная миграция)
+    └── functions/
+        ├── _shared/           # CORS, авторизация, клиент GigaChat, сертификаты Минцифры
+        ├── class-summary/     # сводка класса
+        └── classify-report/   # оценка срочности жалобы
 ```
 
-## Требования
+## Установка
 
-- Node.js 20.19+ (это минимальная версия для текущего официального MAX SDK)
-- npm
-- MAX bot token
-- публичный HTTPS URL мини-приложения для запуска из MAX
-
-## Установка и настройка
+Нужны Node.js 20.19+, npm, токен бота MAX и проект Supabase.
 
 ```powershell
 npm install
@@ -27,65 +55,84 @@ Copy-Item .env.example bot/.env
 Copy-Item miniapp/.env.example miniapp/.env
 ```
 
-Откройте `bot/.env` и замените значения:
+Заполните `bot/.env` (токен, ник бота, HTTPS-адрес мини-приложения) и `miniapp/.env`
+(URL проекта Supabase и publishable key).
 
-```env
-MAX_API_URL=https://platform-api.max.ru
-BOT_TOKEN=ваш_токен_бота_MAX
-MINI_APP_ENABLED=true
-MAX_BOT_USERNAME=имя_бота_без_знака_собачки
-MINI_APP_URL=https://ваш-опубликованный-miniapp.example.com
-```
+### База данных
 
-`bot/.env` игнорируется Git и не попадёт в коммит.
+Выполните [`supabase/schema.sql`](supabase/schema.sql) в Supabase SQL Editor. Скрипт можно
+запускать повторно, в том числе поверх первой версии схемы: существующие профили и ответы сохранятся.
+Обновление выполняется в одной транзакции. Старые повторные ответы без даты остаются в базе;
+актуальная история и метрики используют только ответы с датой.
 
-В `miniapp/.env` укажите URL проекта Supabase и публичный publishable key:
+### GigaChat
 
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
-```
-
-Перед первым запуском выполните [`supabase/schema.sql`](supabase/schema.sql) в Supabase SQL Editor.
-Скрипт создаёт профили пользователей, check-in, связи учитель–ученик, обращения,
-триггер регистрации и политики Row Level Security. Вход работает через Supabase Auth
-по email и паролю; сессия восстанавливается автоматически.
-
-## Локальный запуск
-
-Мини-приложение:
+Ключ GigaChat хранится только в секретах Supabase, в браузер он не попадает.
 
 ```powershell
-npm run dev:miniapp
+npx supabase secrets set GIGACHAT_AUTH_KEY=ваш_ключ_авторизации
+npx supabase functions deploy class-summary
+npx supabase functions deploy classify-report
 ```
 
-Бот через long polling:
+Если Docker не запущен, добавьте к командам развёртывания `--use-api`.
+Войти в CLI можно командой `npx supabase login`; нужный проект указывается через
+`--project-ref qlfxuganauqcbtczinwk`. SQL можно применить из PowerShell:
 
 ```powershell
-npm run dev:bot
+npx supabase db query --linked --project-ref qlfxuganauqcbtczinwk --file supabase/schema.sql
 ```
 
-Оба процесса одновременно:
+Необязательно: `GIGACHAT_MODEL` (по умолчанию `GigaChat-2-Max`) и `GIGACHAT_SCOPE`
+(по умолчанию `GIGACHAT_API_PERS`). Если GigaChat недоступен, жалоба всё равно отправится
+со срочностью «обычная».
+
+## Запуск
 
 ```powershell
-npm run dev
-```
-
-Сборка и проверка типов:
-
-```powershell
+npm run dev          # бот и мини-приложение
+npm run dev:miniapp  # только мини-приложение
+npm run dev:bot      # только бот
 npm run typecheck
+npm test            # MAX Bridge: обычный браузер, MAX web, ошибки вибрации
 npm run build
 ```
 
-После сборки production-версию бота можно запустить так:
+Для проверки функций на Deno:
 
 ```powershell
-npm run start:bot
+npx --yes --package deno deno check supabase/functions/class-summary/index.ts supabase/functions/classify-report/index.ts
 ```
+
+Регрессионные проверки RLS в тестовой базе (нужен PostgreSQL `psql`):
+
+```powershell
+psql -v ON_ERROR_STOP=1 -f supabase/tests/rls.sql
+```
+
+Тест создаёт временные аккаунты и проверяет изоляцию ролей, заметки, записи и запрет
+чтения автора жалобы, включая фильтр и JOIN. Все изменения откатываются.
+`supabase/tests/upgrade.sql` предназначен только для отдельной тестовой базы со старой
+схемой: он проверяет сохранение профилей и всех ответов при двукратном обновлении.
+
+## Приватность
+
+- Ответы учеников видят только сам ученик и учителя, которые добавили его в класс (RLS).
+- В GigaChat уходят только оценки, причины и комментарии без имён и идентификаторов.
+- Автор жалобы хранится, чтобы ученик видел свои жалобы, но колонка `author_id` закрыта
+  привилегиями: получатель не может её прочитать даже прямым запросом к API.
+- Заметки учителя видит только их автор.
+- Срочность жалобы от GigaChat — подсказка для специалиста, а не вывод.
+
+## Ограничения MVP
+
+- Роль (ученик, учитель, психолог) выбирается при регистрации без проверки. Для пилота
+  в школе роли нужно выдавать через администратора.
+- Ссылку на профиль MAX пользователь вставляет вручную в «Профиле»: MAX Bridge не отдаёт её сам.
+- Уведомления в MAX о новых обращениях пока не отправляются.
 
 ## Полезные ссылки
 
 - [Документация MAX для разработчиков](https://dev.max.ru/)
-- [Официальный TypeScript SDK](https://github.com/max-messenger/max-bot-api-client-ts)
-- [Подключение мини-приложения](https://dev.max.ru/help/miniapps)
+- [MAX Bridge](https://dev.max.ru/docs/webapps/bridge)
+- [TypeScript SDK для ботов](https://github.com/max-messenger/max-bot-api-client-ts)
