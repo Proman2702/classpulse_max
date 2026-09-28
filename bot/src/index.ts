@@ -26,8 +26,9 @@ const readConfig = () => {
 const config = readConfig();
 const bot = new Bot(config.token, { clientOptions: { baseUrl: config.apiUrl } });
 
+// MAX web не открывает эту кнопку с коротким username; полная ссылка работает.
 const appKeyboard = config.miniAppEnabled && config.botUsername
-  ? [Keyboard.inlineKeyboard([[Keyboard.button.openApp('Открыть ClassPulse', config.botUsername)]])]
+  ? [Keyboard.inlineKeyboard([[Keyboard.button.openApp('Открыть ClassPulse', `https://max.ru/${config.botUsername}`)]])]
   : [];
 
 const WELCOME = [
