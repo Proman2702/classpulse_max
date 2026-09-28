@@ -1,0 +1,28 @@
+# Запуск всех локальных компонентов одной командой:
+#   docker compose up --build
+# Значения берутся из файла .env в корне (шаблон — .env.example).
+
+services:
+  miniapp:
+    build:
+      context: .
+      dockerfile: miniapp/Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?укажите VITE_SUPABASE_URL в .env}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:?укажите VITE_SUPABASE_PUBLISHABLE_KEY в .env}
+        VITE_MAX_BOT_USERNAME: ${VITE_MAX_BOT_USERNAME:-${MAX_BOT_USERNAME:-}}
+    ports:
+      - "${MINIAPP_PORT:-8080}:80"
+    restart: unless-stopped
+
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    environment:
+      MAX_API_URL: ${MAX_API_URL:-https://platform-api2.max.ru}
+      BOT_TOKEN: ${BOT_TOKEN:?укажите BOT_TOKEN в .env}
+      MAX_BOT_USERNAME: ${MAX_BOT_USERNAME:-}
+      MINI_APP_URL: ${MINI_APP_URL:-}
+      MINI_APP_ENABLED: ${MINI_APP_ENABLED:-true}
+    restart: unless-stopped

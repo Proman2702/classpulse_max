@@ -12,6 +12,12 @@ const LINK_HINTS: Record<User["role"], string> = {
   psychologist: "Ученики смогут написать вам в MAX после записи.",
 };
 
+const NOTIFY_HINTS: Record<User["role"], string> = {
+  student: "Бот сообщит, когда специалист ответит на запись или рассмотрит жалобу.",
+  teacher: "Бот напишет, если ученик отметил плохой день, и о новых записях и жалобах.",
+  psychologist: "Бот напишет о новых записях и жалобах, адресованных вам.",
+};
+
 interface ProfileScreenProps {
   user: User;
   onUserChange: (user: User) => void;
@@ -77,6 +83,20 @@ export const ProfileScreen = ({ user, onUserChange, onLogout }: ProfileScreenPro
           </div>
         </Section>
       </form>
+
+      <Section
+        header="Уведомления в MAX"
+        footer={user.maxLinked
+          ? NOTIFY_HINTS[user.role]
+          : "Откройте ClassPulse из бота в MAX — аккаунт привяжется автоматически."}
+      >
+        <Cell
+          before={<CellIcon color={user.maxLinked ? "var(--success)" : "var(--text-tertiary)"}><Icon name="chat" size={20} /></CellIcon>}
+          subtitle={user.maxLinked ? "Бот пишет вам о важном" : "Аккаунт MAX не привязан"}
+        >
+          {user.maxLinked ? "Подключены" : "Не подключены"}
+        </Cell>
+      </Section>
 
       <Section>
         <Cell before={<CellIcon color="var(--danger)"><Icon name="logout" size={20} /></CellIcon>} danger onClick={onLogout}>

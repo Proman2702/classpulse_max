@@ -9,6 +9,7 @@ import {
   Avatar, Badge, Banner, Button, Cell, Chip, Header, Icon, IconButton, Input, Placeholder, Screen, ScreenSpinner,
   Section, Segmented, Sheet,
 } from "../../ui";
+import { max } from "../../lib/max";
 import { AddStudentForm } from "./AddStudentForm";
 import { MoodDots } from "./MoodHistory";
 import { StudentSheet } from "./StudentSheet";
@@ -33,6 +34,7 @@ export const ClassScreen = ({ user }: { user: User }) => {
   const [openId, setOpenId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [notice, setNotice] = useState("");
+  const [inviteError, setInviteError] = useState("");
 
   const students = useMemo(() => classroom.data ?? [], [classroom.data]);
 
@@ -56,6 +58,21 @@ export const ClassScreen = ({ user }: { user: User }) => {
             || byName(a, b));
   }, [students, search, filter, sort]);
 
+  const invite = async () => {
+    setInviteError("");
+    try {
+      const result = await max.share(
+        "Привет! Это ClassPulse — отмечай, как прошёл день, это займёт 20 секунд. Зарегистрируйся и скажи мне свой ник, я добавлю тебя в класс.",
+        max.appLink(),
+      );
+      if (result === "copied") setNotice("Приглашение скопировано — вставьте его в чат класса");
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      console.error("Failed to share invitation:", error);
+      setInviteError("Не удалось поделиться приглашением. Попробуйте ещё раз");
+    }
+  };
+
   const openItem = students.find((item) => item.student.id === openId);
   const attentionCount = students.filter((item) => getStudentState(item.checkins) === "attention").length;
 
@@ -75,6 +92,7 @@ export const ClassScreen = ({ user }: { user: User }) => {
     >
       <p className="greeting">Здравствуйте, {user.nickname}! Вот как дела у класса сегодня.</p>
       {notice && <Banner tone="success">{notice}</Banner>}
+      {inviteError && <Banner tone="error">{inviteError}</Banner>}
       {classroom.error && <Banner tone="error">{classroom.error}</Banner>}
 
       <div className="stats stats--hero">
@@ -96,6 +114,14 @@ export const ClassScreen = ({ user }: { user: User }) => {
       </div>
 
       <SummaryCard answersToday={todayCheckins.length} />
+
+      {students.length > 0 && (
+        <button type="button" className="invite-row" onClick={() => void invite()}>
+          <Icon name="send" size={20} />
+          <span>Пригласить учеников через MAX</span>
+          <Icon name="chevron" size={18} />
+        </button>
+      )}
 
       <Section
         header="Ученики"
@@ -123,9 +149,14 @@ export const ClassScreen = ({ user }: { user: User }) => {
           <Placeholder
             icon={<Icon name="class" size={36} />}
             title="Учеников пока нет"
-            action={<Button size="m" onClick={() => setIsAdding(true)}>Добавить ученика</Button>}
+            action={
+              <div className="actions">
+                <Button size="m" before={<Icon name="send" size={18} />} onClick={() => void invite()}>Пригласить класс в MAX</Button>
+                <Button size="m" mode="secondary" onClick={() => setIsAdding(true)}>Добавить по нику</Button>
+              </div>
+            }
           >
-            Добавьте ученика по нику, чтобы видеть его состояние.
+            Отправьте приглашение в чат класса, а затем добавьте учеников по нику.
           </Placeholder>
         ) : visible.length === 0 ? (
           <Placeholder compact title="Ничего не найдено">Измените поиск или фильтр.</Placeholder>

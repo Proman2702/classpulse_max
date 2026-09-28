@@ -44,3 +44,11 @@ export const getRequestContext = async (request: Request): Promise<RequestContex
 
   return { supabase, profile: profile as RequestContext["profile"] };
 };
+
+/** Клиент с сервисным ключом: обходит RLS, поэтому используется только на сервере и точечно. */
+export const getServiceClient = (): SupabaseClient => {
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) throw new HttpError(503, "Сервер не настроен");
+  return createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+};

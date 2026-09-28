@@ -10,6 +10,8 @@ export interface User {
   nickname: string;
   role: UserRole;
   maxLink: string | null;
+  /** Бот может присылать этому пользователю уведомления в MAX. */
+  maxLinked: boolean;
 }
 
 export interface Checkin {

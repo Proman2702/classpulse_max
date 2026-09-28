@@ -11,6 +11,7 @@ interface MaxWebApp {
     user?: { id: number; first_name?: string; last_name?: string; username?: string; photo_url?: string };
   };
   ready?: () => void;
+  shareMaxContent?: (content: { text?: string; link?: string }) => Promise<unknown> | void;
   openLink?: (url: string) => void;
   openMaxLink?: (url: string) => void;
   BackButton?: {
@@ -52,6 +53,27 @@ export const MAX_LINK_PREFIX = "https://max.ru/";
 export const isMaxLink = (value: string) => value.startsWith(MAX_LINK_PREFIX) && value.length > MAX_LINK_PREFIX.length;
 
 export const max = {
+  initData: () => bridge()?.initData || "",
+
+  appLink: () => {
+    const bot = (import.meta.env?.VITE_MAX_BOT_USERNAME || "t98_hakaton_max_bot").replace(/^@/, "");
+    return `${MAX_LINK_PREFIX}${bot}?startapp`;
+  },
+
+  async share(text: string, link: string): Promise<"shared" | "copied"> {
+    const app = bridge();
+    if (app?.shareMaxContent) {
+      await app.shareMaxContent({ text, link });
+      return "shared";
+    }
+    if (navigator.share) {
+      await navigator.share({ text, url: link });
+      return "shared";
+    }
+    await navigator.clipboard.writeText(`${text}\n${link}`);
+    return "copied";
+  },
+
   ready() {
     bridge()?.ready?.();
     document.documentElement.dataset.platform = bridge()?.platform ?? "web";

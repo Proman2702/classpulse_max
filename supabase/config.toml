@@ -1,0 +1,5 @@
+[functions.notify]
+verify_jwt = false
+
+[functions.link-max]
+verify_jwt = true

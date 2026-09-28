@@ -55,3 +55,14 @@ test("Rejected MAX vibration requests are handled", async () => {
     console.warn = originalWarn;
   }
 });
+
+test("Invitation sharing waits for MAX and propagates failures", async () => {
+  const calls: unknown[] = [];
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {
+    WebApp: { platform: "web", initData: "context", shareMaxContent: async (data: unknown) => { calls.push(data); } },
+  } });
+  assert.equal(await max.share("Invite", max.appLink()), "shared");
+  assert.deepEqual(calls, [{ text: "Invite", link: "https://max.ru/t98_hakaton_max_bot?startapp" }]);
+  window.WebApp!.shareMaxContent = () => Promise.reject(new Error("offline"));
+  await assert.rejects(() => max.share("Invite", max.appLink()), /offline/);
+});

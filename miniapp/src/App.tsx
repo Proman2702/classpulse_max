@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { getCurrentUser, onSignedOut, signOut } from "./api/auth";
+import { linkMaxAccount } from "./api/max";
 import { LoginScreen } from "./features/auth/LoginScreen";
 import { PsychologistApp, StudentApp, TeacherApp } from "./features/RoleApps";
 import { getErrorMessage } from "./lib/errors";
+import { max } from "./lib/max";
 import type { User } from "./types";
 import { Banner, ScreenSpinner } from "./ui";
 
@@ -32,6 +34,21 @@ export const App = () => {
       return undefined;
     }
   }, []);
+
+  const userId = user?.id;
+  useEffect(() => {
+    const initData = max.initData();
+    if (!userId || !initData) return;
+    let isActive = true;
+    linkMaxAccount(initData)
+      .then(() => {
+        if (isActive) setUser(current => current?.id === userId ? { ...current, maxLinked: true } : current);
+      })
+      .catch((linkError: unknown) => {
+        if (isActive) setError(getErrorMessage(linkError, "Не удалось подключить уведомления MAX"));
+      });
+    return () => { isActive = false; };
+  }, [userId]);
 
   const logout = async () => {
     setError("");

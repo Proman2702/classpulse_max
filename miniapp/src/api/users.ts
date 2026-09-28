@@ -1,13 +1,14 @@
 import { getSupabase, unwrap } from "../lib/supabase";
 import type { User, UserRole } from "../types";
 
-export const USER_COLUMNS = "id, nickname, role, max_link";
+export const USER_COLUMNS = "id, nickname, role, max_link, max_linked";
 
 export interface UserRow {
   id: string;
   nickname: string;
   role: UserRole;
   max_link: string | null;
+  max_linked: boolean | null;
 }
 
 export const toUser = (row: UserRow): User => ({
@@ -15,6 +16,7 @@ export const toUser = (row: UserRow): User => ({
   nickname: row.nickname,
   role: row.role,
   maxLink: row.max_link,
+  maxLinked: Boolean(row.max_linked),
 });
 
 const users = () => getSupabase().from("users");

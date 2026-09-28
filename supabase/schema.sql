@@ -20,6 +20,11 @@ create table if not exists public.users (
 );
 
 alter table public.users add column if not exists max_link text;
+alter table public.users add column if not exists max_user_id bigint;
+alter table public.users add column if not exists max_linked boolean
+  generated always as (max_user_id is not null) stored;
+create unique index if not exists users_max_user_id_key
+  on public.users (max_user_id) where max_user_id is not null;
 alter table public.users add column if not exists auth_user_id uuid references auth.users (id) on delete cascade;
 create unique index if not exists users_auth_user_id_key
   on public.users (auth_user_id) where auth_user_id is not null;
@@ -259,7 +264,7 @@ revoke all on table
   public.student_notes, public.appointments, public.reports
 from anon, authenticated;
 
-grant select on public.users to authenticated;
+grant select (id, auth_user_id, nickname, role, max_link, max_linked, created_at) on public.users to authenticated;
 grant update (nickname, max_link) on public.users to authenticated;
 
 grant select, insert on public.student_checkins to authenticated;
@@ -438,5 +443,135 @@ with check (recipient_id = (select private.current_profile_id()));
 -- Таблица student_requests из первой версии больше не используется
 -- (её заменили appointments и reports). Удалите её вручную, если она не нужна:
 -- drop table if exists public.student_requests;
+
+-- Уведомления в MAX
+-- Триггеры отправляют изменения в Edge Function notify через pg_net.
+-- Чтобы включить, один раз заполните настройки (значения — ваши):
+--   insert into private.app_config (key, value) values
+--     ('notify_url', 'https://<project-ref>.supabase.co/functions/v1/notify'),
+--     ('notify_secret', '<тот же секрет, что NOTIFY_SECRET у функции>')
+--   on conflict (key) do update set value = excluded.value;
+-- Пока настройки не заданы, триггеры ничего не делают.
+-- ---------------------------------------------------------------------------
+
+do $$
+begin
+  if exists (select 1 from pg_available_extensions where name = 'pg_net') then
+    create extension if not exists pg_net with schema extensions;
+  end if;
+end $$;
+
+create table if not exists private.app_config (
+  key text primary key,
+  value text not null
+);
+-- Managed pg_net queues can be readable by other roles. Never put credentials
+-- or report authors there: use a signed envelope with only event ids and status.
+revoke all on table private.app_config from public, anon, authenticated;
+alter table private.app_config enable row level security;
+
+create table if not exists private.notification_events (
+  id uuid primary key,
+  created_at timestamptz not null default now(),
+  claimed boolean not null default false
+);
+alter table private.notification_events enable row level security;
+revoke all on table private.notification_events from public, anon, authenticated;
+grant select, update on private.notification_events to service_role;
+grant usage on schema private to service_role;
+create or replace function public.claim_notification(event_id uuid)
+returns boolean language plpgsql security invoker set search_path = '' as $$
+begin
+  update private.notification_events set claimed = true where id = event_id and not claimed;
+  return found;
+end;
+$$;
+revoke all on function public.claim_notification(uuid) from public, anon, authenticated;
+grant execute on function public.claim_notification(uuid) to service_role;
+
+create or replace function private.notify_change()
+returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  notify_url text := (select value from private.app_config where key = 'notify_url');
+  notify_secret text := (select value from private.app_config where key = 'notify_secret');
+  event_id uuid := gen_random_uuid();
+  payload text;
+  signature text;
+  crypto_schema text := (select n.nspname from pg_extension e join pg_namespace n on n.oid=e.extnamespace where e.extname='pgcrypto');
+begin
+  if tg_op = 'UPDATE' then
+    if tg_table_name = 'student_checkins' then
+      if new.mood = old.mood then return new; end if;
+    else
+      if new.status = old.status then return new; end if;
+    end if;
+  end if;
+  if notify_url is null or notify_secret is null then
+    return new;
+  end if;
+
+  payload := jsonb_build_object(
+    'event_id', event_id, 'timestamp', extract(epoch from now()),
+    'table', tg_table_name, 'type', tg_op,
+    'record', jsonb_build_object('id', new.id, 'mood', to_jsonb(new)->'mood', 'status', to_jsonb(new)->'status'),
+    'old_record', case when tg_op = 'UPDATE' then jsonb_build_object('mood', to_jsonb(old)->'mood', 'status', to_jsonb(old)->'status') end
+  )::text;
+  execute format('select encode(%I.hmac($1,$2,''sha256''),''hex'')', crypto_schema)
+    into signature using payload, notify_secret;
+  insert into private.notification_events(id) values(event_id);
+  perform net.http_post(
+    url := notify_url,
+    body := jsonb_build_object('payload', payload, 'signature', signature),
+    headers := jsonb_build_object('Content-Type', 'application/json'),
+    timeout_milliseconds := 15000
+  );
+  return new;
+exception when others then
+  -- Уведомление не должно мешать сохранению данных.
+  raise warning 'notify_change failed: %', sqlerrm;
+  return new;
+end;
+$$;
+
+revoke all on function private.notify_change() from public, anon, authenticated;
+
+-- Only link-max can call this transaction after checking the MAX signature.
+create or replace function public.link_max_account(profile_id uuid, verified_max_id bigint)
+returns void language plpgsql security invoker set search_path = '' as $$
+begin
+  if verified_max_id <= 0 or verified_max_id is null then raise exception 'Invalid MAX id'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(verified_max_id);
+  perform id from public.users where id = profile_id for update;
+  if not found then raise exception 'Profile not found'; end if;
+  update public.users set max_user_id = null where max_user_id = verified_max_id and id <> profile_id;
+  update public.users set max_user_id = verified_max_id where id = profile_id;
+end;
+$$;
+revoke all on function public.link_max_account(uuid, bigint) from public, anon, authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function public.link_max_account(uuid, bigint) to service_role;
+  end if;
+end $$;
+
+drop trigger if exists notify_low_mood on public.student_checkins;
+create trigger notify_low_mood
+  after insert or update of mood on public.student_checkins
+  for each row when (new.mood <= 2)
+  execute function private.notify_change();
+
+drop trigger if exists notify_appointment on public.appointments;
+create trigger notify_appointment
+  after insert or update of status on public.appointments
+  for each row execute function private.notify_change();
+
+drop trigger if exists notify_report on public.reports;
+create trigger notify_report
+  after insert or update of status on public.reports
+  for each row execute function private.notify_change();
+
 
 commit;

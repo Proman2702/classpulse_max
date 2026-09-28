@@ -17,7 +17,7 @@ const readConfig = () => {
 
   return {
     token,
-    apiUrl: process.env.MAX_API_URL || 'https://platform-api.max.ru',
+    apiUrl: process.env.MAX_API_URL || 'https://platform-api2.max.ru',
     miniAppEnabled,
     botUsername,
   };

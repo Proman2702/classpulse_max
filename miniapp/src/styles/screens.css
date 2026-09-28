@@ -610,3 +610,22 @@
   font-size: 12px;
   text-align: center;
 }
+
+.invite-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--radius-l);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  text-align: left;
+}
+
+.invite-row span {
+  flex: 1;
+}

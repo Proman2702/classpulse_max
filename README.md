@@ -24,6 +24,10 @@
 
 **Психолог** — те же обращения, адресованные ему.
 
+**MAX:** аккаунт автоматически привязывается по подписанным данным запуска. Бот уведомляет учителя
+о низкой оценке, специалиста о новой записи/анонимной жалобе, ученика о смене статуса обращения.
+Учитель может пригласить класс через окно «Поделиться» MAX.
+
 ## Структура
 
 ```text
@@ -110,6 +114,45 @@ npm test            # MAX Bridge: обычный браузер, MAX web, оши
 npm run build
 ```
 
+### Уведомления и привязка MAX
+
+После `schema.sql` задайте в секретах Supabase `MAX_BOT_TOKEN` (тот же токен, что `BOT_TOKEN`),
+`MAX_BOT_USERNAME`, `MAX_API_URL=https://platform-api2.max.ru` и случайный `NOTIFY_SECRET`.
+Для передачи секретов используйте локальный файл `.env` и `supabase secrets set --env-file`,
+не добавляйте этот файл в Git. Разверните новые функции:
+
+```powershell
+npx supabase functions deploy link-max notify --project-ref qlfxuganauqcbtczinwk --use-api
+```
+
+`link-max` проверяет JWT и подпись MAX; `notify` проверяет HMAC события, поэтому для него
+`verify_jwt=false` задан в `supabase/config.toml`. Настройки включения — в `private.app_config`:
+
+```sql
+insert into private.app_config(key,value) values
+  ('notify_url','https://qlfxuganauqcbtczinwk.supabase.co/functions/v1/notify'),
+  ('notify_secret','<тот же случайный NOTIFY_SECRET>')
+on conflict(key) do update set value=excluded.value;
+```
+
+Рабочий проект уже настроен. MAX API v2 использует сертификат Минцифры: Edge Functions доверяют
+публичным сертификатам из `_shared/ca.ts`, а команды запуска бота добавляют их через
+`NODE_EXTRA_CA_CERTS`, сохраняя проверку TLS.
+
+26 автотестов проверяют расчёты, ошибки, Bridge, приглашения и подписи MAX/уведомлений.
+Дополнительные SQL-проверки: `supabase/tests/rls.sql`, `upgrade.sql`, `notifications.sql`
+(последний — только для отдельной локальной базы без настоящего pg_net).
+Повторное сохранение той же оценки/статуса и повторная доставка события не рассылают уведомления.
+Автоматическая повторная отправка при недоступности MAX пока не реализована; сохранение ответа
+или обращения от сбоя уведомления не зависит.
+
+Описание продукта, архитектура, ручные проверки и сценарий защиты: [docs/PRODUCT.md](docs/PRODUCT.md),
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TESTING.md](docs/TESTING.md), [docs/PITCH.md](docs/PITCH.md).
+В архиве также есть Docker-конфигурация и `npm run seed` для демонстрационных данных;
+seed обновляет/перезаписывает только перечисленные в нём демонстрационные аккаунты, не запускайте его
+на школьных данных. Docker требует значения `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
+и параметров бота в корневом `.env`.
+
 Для проверки функций на Deno:
 
 ```powershell
@@ -141,7 +184,7 @@ psql -v ON_ERROR_STOP=1 -f supabase/tests/rls.sql
 - Роль (ученик, учитель, психолог) выбирается при регистрации без проверки. Для пилота
   в школе роли нужно выдавать через администратора.
 - Ссылку на профиль MAX пользователь вставляет вручную в «Профиле»: MAX Bridge не отдаёт её сам.
-- Уведомления в MAX о новых обращениях пока не отправляются.
+- Для получения уведомлений нужно открыть приложение из бота и войти в свой профиль ClassPulse.
 
 ## Полезные ссылки
 
