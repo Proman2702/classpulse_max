@@ -8,3 +8,8 @@ dist/
 .DS_Store
 .vscode/
 supabase/.temp/
+
+# Local agent instructions and skills
+AGENTS.md
+HISTORY.md
+.agents/skills/

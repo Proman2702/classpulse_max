@@ -9,9 +9,9 @@ flowchart TB
     BR[MAX Bridge<br/>window.WebApp]
   end
 
-  subgraph Docker[Локальные компоненты · docker compose]
-    BOT[bot<br/>Node.js · @maxhub/max-bot-api]
-    APP[miniapp<br/>React · Vite · nginx]
+  subgraph Hosting[Запуск приложения]
+    BOT[bot<br/>Node.js · локально или Docker]
+    APP[miniapp<br/>React · Vercel, локально Vite или Docker]
   end
 
   subgraph Supabase[Supabase · облако]
@@ -19,6 +19,8 @@ flowchart TB
     DB[(Postgres<br/>RLS)]
     FN1[Edge Function<br/>class-summary]
     FN2[Edge Function<br/>classify-report]
+    FN3[Edge Function<br/>link-max]
+    FN4[Edge Function<br/>notify]
   end
 
   GIGA[GigaChat API]
@@ -31,24 +33,25 @@ flowchart TB
   APP -- invoke --> FN1 & FN2
   FN1 & FN2 -- JWT пользователя --> DB
   FN1 & FN2 -- OAuth + chat/completions --> GIGA
-  APP -- initData --> FN3[Edge Function<br/>link-max]
-  DB -- триггеры + pg_net --> FN4[Edge Function<br/>notify]
+  APP -- JWT + подписанные initData --> FN3
+  FN3 -- проверенный MAX ID --> DB
+  DB -- триггер + pg_net + HMAC --> FN4
   FN4 -- Bot API POST /messages --> U
 ```
 
 | Компонент | Ответственность | Не делает |
 |---|---|---|
-| Бот | Встречает пользователя, открывает мини-приложение, `/help` с экстренными контактами | Не хранит данные, не обращается к базе |
+| Бот | Встречает пользователя, открывает мини-приложение полной ссылкой на бота, `/help` с экстренными контактами | Не хранит данные, не обращается к базе |
 | Мини-приложение | Весь интерфейс, бизнес-правила отображения (состояние ученика, сортировка) | Не хранит секреты; ключи Supabase в нём публичные |
 | Supabase Postgres | Данные и **права доступа** (RLS + привилегии колонок) | — |
-| Edge Functions | Единственное место с ключами GigaChat и бота; обезличивание перед LLM; привязка MAX и уведомления | `class-summary` и `classify-report` работают с JWT пользователя и не обходят RLS; сервисный ключ — только в `link-max` (одна колонка) и `notify` (чтение получателей) |
+| Edge Functions | Ключи GigaChat и бота, обезличивание перед LLM, проверенная привязка MAX и уведомления | `class-summary` и `classify-report` работают с JWT пользователя и не обходят RLS; сервисный ключ используют только `link-max` и `notify` |
 | GigaChat | Сводка текста, оценка срочности | Не получает имён и идентификаторов |
 
 ## Структура кода
 
 ```text
 miniapp/src/
-├── api/            # доступ к данным: users, auth, checkins, students, support, ai
+├── api/            # доступ к данным: users, auth, checkins, students, support, ai, max
 ├── features/
 │   ├── auth/       # вход и регистрация
 │   ├── student/    # опрос-чат, поддержка, формы записи и жалобы
@@ -63,35 +66,46 @@ miniapp/src/
 
 supabase/
 ├── schema.sql
+├── tests/          # RLS, обновление прежней схемы, подписи уведомлений
 └── functions/
-    ├── _shared/    # http.ts (CORS, ошибки), auth.ts (контекст пользователя), gigachat.ts, ca.ts, date.ts
+    ├── _shared/    # HTTP, JWT, GigaChat, MAX, сертификаты и даты
     ├── class-summary/
-    └── classify-report/
+    ├── classify-report/
+    ├── link-max/
+    └── notify/
+
+bot/src/             # команды MAX и кнопка запуска
+bot/run.mjs          # запуск с доверенными сертификатами MAX API v2
 ```
 
 Слои зависят только сверху вниз: `features → api → lib`, `features → ui`. Компоненты UI не знают о данных.
 
 ## Модель данных
 
-```mermaid
-erDiagram
-  users ||--o{ student_checkins : "отвечает"
-  users ||--o{ teacher_students : "учитель"
-  users ||--o{ teacher_students : "ученик"
-  users ||--o{ student_notes : "пишет"
-  users ||--o{ appointments : "записывается / принимает"
-  users ||--o{ reports : "отправляет / получает"
+Это фактическая схема подключённого проекта Supabase `qlfxuganauqcbtczinwk`, сверенная с БД
+30.09.2026. `auth.users` хранит учётные данные, а `public.users` — профиль приложения.
 
-  users { uuid id  uuid auth_user_id  text nickname  text role  text max_link }
-  student_checkins { uuid student_id  int mood  text[] reasons  text comment  date checkin_date }
-  teacher_students { uuid teacher_id  uuid student_id  bool is_watched }
-  student_notes { uuid teacher_id  uuid student_id  text body }
-  appointments { uuid student_id  uuid specialist_id  text topic  text preferred_time  text status }
-  reports { uuid author_id  uuid recipient_id  text subject_kind  text message  text severity  text status }
-```
+| Таблица | Поля и связи, используемые приложением |
+|---|---|
+| `public.users` | `id` UUID; `auth_user_id` → `auth.users.id`; `nickname`, `role` (`student` / `teacher` / `psychologist`), `max_link`, закрытый `max_user_id`, вычисляемый `max_linked`, `created_at` |
+| `public.student_checkins` | `id`; `student_id` → `users.id`; `mood` 1–5, `reasons` text[], `comment`, `checkin_date` (день по Москве), `created_at` |
+| `public.teacher_students` | `id`; `teacher_id` и `student_id` → `users.id`; `is_watched`, `created_at`; пара учитель–ученик уникальна |
+| `public.student_notes` | `id`; `teacher_id` и `student_id` → `users.id`; `body`, `created_at` |
+| `public.appointments` | `id`; `student_id` и `specialist_id` → `users.id`; `topic`, `preferred_time`, `status` (`new` / `accepted` / `declined` / `done`), `created_at` |
+| `public.reports` | `id`; закрытый `author_id` и `recipient_id` → `users.id`; `subject_kind`, `subject_name`, `message`, `severity` (`low` / `medium` / `high` / `critical`), `status` (`new` / `read` / `resolved`), `created_at` |
+| `private.app_config` | `key`, `value`: адрес функции уведомлений и серверный секрет; клиенту недоступна |
+| `private.notification_events` | `id`, `created_at`, `claimed`: однократное принятие события; клиенту недоступна |
 
-Ограничения на уровне базы: один ответ ученика в день (`unique(student_id, checkin_date)`), оценка 1–5,
-длины текстов, допустимые статусы и роли, ссылка MAX только вида `https://max.ru/...`.
+Все прикладные `id` — UUID. Ограничения базы проверяют роли, допустимые статусы, длины текстов и
+ссылку MAX вида `https://max.ru/...`. Индекс `(student_id, checkin_date)` не допускает двух
+датированных ответов ученика за один день. Старые ответы без даты сохранены после миграции,
+но не считаются ответом за сегодня. При удалении профиля связанные записи удаляются по FK.
+
+На момент сверки в этом проекте было 12 профилей (8 учеников, 3 учителя, 1 психолог),
+12 ответов, 8 связей класса, 3 записи на разговор, 2 жалобы и 0 заметок. Это состав всей
+рабочей базы, а не набор из трёх выбранных тестовых аккаунтов в [TESTING.md](TESTING.md).
+Демонстрационный `seed` для этой проверки не нужен. Таблица `public.student_requests`
+оставлена от первой версии, но текущий интерфейс использует `appointments` и `reports`.
 
 ## Права доступа
 
@@ -126,8 +140,9 @@ erDiagram
 Клиент не может записать эту колонку сам и не может её прочитать — видит только флаг `max_linked`.
 
 **Уведомления.** Триггеры на `student_checkins` (оценка 1–2), `appointments` (новая запись, смена статуса)
-и `reports` (новая жалоба, жалоба решена) через `pg_net` отправляют изменение в `notify` с заголовком
-HMAC-SHA256. В очереди находятся только id события/записи и статус, без секрета и автора жалобы.
+и `reports` (новая жалоба, жалоба решена) через `pg_net` отправляют в `notify` тело с минимальными
+полями события и подписью HMAC-SHA256. В очереди находятся только id события/записи, оценка или статус;
+там нет секрета, автора жалобы и свободного текста.
 Функция атомарно отмечает событие доставляемым (повторный запрос пропускается), читает запись серверным
 ключом, находит получателей и шлёт сообщение ботом с кнопкой «Открыть ClassPulse».
 Пока в `private.app_config` нет адреса и секрета, триггеры ничего не делают; ошибка отправки не мешает
@@ -145,8 +160,9 @@ HMAC-SHA256. В очереди находятся только id события
 
 ## Безопасность
 
-- Секреты (`BOT_TOKEN`, `GIGACHAT_AUTH_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) не в коде: `.env` в `.gitignore`,
-  ключ GigaChat — в секретах Supabase.
+- Секреты (`BOT_TOKEN` локального бота, `MAX_BOT_TOKEN`, `NOTIFY_SECRET`, `GIGACHAT_AUTH_KEY`
+  и `SUPABASE_SERVICE_ROLE_KEY` функций) не в коде: `.env` в `.gitignore`, ключи функций —
+  в секретах Supabase.
 - В браузере только публичный ключ Supabase; доступ ограничивает RLS.
 - Запросы к GigaChat идут с сертификатами НУЦ Минцифры (`_shared/ca.ts`).
 - Промпты явно указывают модели, что ответы учеников — данные, а не инструкции (защита от prompt injection).
