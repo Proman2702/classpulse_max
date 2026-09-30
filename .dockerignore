@@ -4,6 +4,7 @@
 **/.env.*
 !**/.env.example
 .git
+.github
 .agents
 .vscode
 docs
@@ -11,3 +12,5 @@ supabase
 scripts
 *.md
 *.log
+**/tests
+**/*.test.ts

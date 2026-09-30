@@ -1,13 +1,14 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
+const runtimeConfig = typeof window === "undefined" ? undefined : window.__CLASSPULSE_CONFIG__;
+const url = runtimeConfig?.supabaseUrl || import.meta.env.VITE_SUPABASE_URL;
+const key = runtimeConfig?.supabaseKey || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 let client: SupabaseClient | null = null;
 
 export const getSupabase = (): SupabaseClient => {
   if (!url || !key) {
-    throw new Error("Supabase не настроен: добавьте URL и публичный ключ в miniapp/.env");
+    throw new Error("Supabase не настроен: укажите URL и публичный ключ в .env");
   }
   client ??= createClient(url, key);
   return client;

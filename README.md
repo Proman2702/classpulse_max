@@ -148,10 +148,35 @@ on conflict(key) do update set value=excluded.value;
 
 Описание продукта, архитектура, ручные проверки и сценарий защиты: [docs/PRODUCT.md](docs/PRODUCT.md),
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TESTING.md](docs/TESTING.md), [docs/PITCH.md](docs/PITCH.md).
-В архиве также есть Docker-конфигурация и `npm run seed` для демонстрационных данных;
-seed обновляет/перезаписывает только перечисленные в нём демонстрационные аккаунты, не запускайте его
-на школьных данных. Docker требует значения `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
-и параметров бота в корневом `.env`.
+`npm run seed` создаёт демонстрационные данные и обновляет только перечисленные в нём аккаунты;
+не запускайте его на школьных данных.
+
+### Docker
+
+Локально нужны Docker Desktop, публичный URL и publishable key Supabase, токен MAX-бота.
+Скопируйте `.env.example` в корневой `.env` и заполните значения. Файл `.env` исключён из Git
+и контекста Docker-сборки. `MINI_APP_URL` должен указывать на публичный HTTPS-адрес приложения,
+зарегистрированный в MAX: `localhost` на телефоне не откроется.
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build
+```
+
+Мини-приложение откроется по `http://localhost:8080` (или порту `MINIAPP_PORT`).
+Проверка состояния: `docker compose ps`; остановка: `docker compose down`.
+Compose собирает два образа: статику React под nginx и Node.js-бота. Рабочая база и Edge Functions
+остаются в Supabase. Публичные параметры Supabase записываются в `config.js` при старте
+контейнера, поэтому один и тот же образ miniapp подходит для разных проектов без пересборки.
+`config.js` содержит только публичный ключ; токен бота передаётся контейнеру через `.env`
+и в образ не попадает.
+
+После отправки изменений в `main` GitHub Actions публикует два образа в GitHub Container Registry:
+`ghcr.io/proman2702/classpulse_max-miniapp:latest` и
+`ghcr.io/proman2702/classpulse_max-bot:latest`. Теги `sha-<полный SHA коммита>` позволяют
+воспроизвести конкретную версию. Для запуска опубликованных образов нужны те же переменные
+окружения, что в Compose; Dockerfile и `compose.yaml` остаются основным воспроизводимым способом
+сборки из исходников.
 
 Для проверки функций на Deno:
 

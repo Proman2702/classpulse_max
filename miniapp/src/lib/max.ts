@@ -56,7 +56,7 @@ export const max = {
   initData: () => bridge()?.initData || "",
 
   appLink: () => {
-    const bot = (import.meta.env?.VITE_MAX_BOT_USERNAME || "t98_hakaton_max_bot").replace(/^@/, "");
+    const bot = (window.__CLASSPULSE_CONFIG__?.maxBotUsername || import.meta.env?.VITE_MAX_BOT_USERNAME || "t98_hakaton_max_bot").replace(/^@/, "");
     return `${MAX_LINK_PREFIX}${bot}?startapp`;
   },
 

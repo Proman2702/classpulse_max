@@ -11,17 +11,11 @@ RUN npm ci --workspace miniapp --include-workspace-root=false --no-audit --no-fu
 
 COPY miniapp miniapp
 
-# Публичные значения Supabase встраиваются в сборку (это не секреты).
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_PUBLISHABLE_KEY
-ARG VITE_MAX_BOT_USERNAME
-ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
-    VITE_SUPABASE_PUBLISHABLE_KEY=$VITE_SUPABASE_PUBLISHABLE_KEY \
-    VITE_MAX_BOT_USERNAME=$VITE_MAX_BOT_USERNAME
 RUN npm run build --workspace miniapp
 
 FROM nginx:1.27-alpine
 COPY miniapp/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/miniapp/dist /usr/share/nginx/html
+COPY --chmod=755 miniapp/docker/40-runtime-config.sh /docker-entrypoint.d/40-runtime-config.sh
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
